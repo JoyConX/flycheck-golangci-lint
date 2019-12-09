@@ -72,14 +72,16 @@
   :type '(repeat (string :tag "linter"))
   :safe #'flycheck-string-list-p)
 
+
 (flycheck-define-checker golangci-lint
   "A Go syntax checker using golangci-lint that's 5x faster than gometalinter
 
 See URL `https://github.com/golangci/golangci-lint'."
-  :command ("golangci-lint" "run" "--print-issued-lines=false" "--out-format=line-number"
-            (option "--config=" flycheck-golangci-lint-config concat)
+  :command ("golangci-lint" "run" "--print-issued-lines=false" "--out-format=line-number"  "--max-issues-per-linter=100000000"  "--max-same-issues=11000000"
+            "--tests=false"
+            ;;(option "--config=" flycheck-golangci-lint-config concat)
             (option "--deadline=" flycheck-golangci-lint-deadline concat)
-            (option-flag "--tests" flycheck-golangci-lint-tests)
+            ;;(option-flag "--tests=" flycheck-golangci-lint-tests)
             (option-flag "--fast" flycheck-golangci-lint-fast)
             (option-flag "--disable-all" flycheck-golangci-lint-disable-all)
             (option-flag "--enable-all" flycheck-golangci-lint-enable-all)
@@ -87,9 +89,12 @@ See URL `https://github.com/golangci/golangci-lint'."
             (option-list "--enable=" flycheck-golangci-lint-enable-linters concat)
             ".")
   :error-patterns
-  ((error line-start (file-name) ":" line ":" column ": " (message) line-end)
-   (error line-start (file-name) ":" line ":" (message) line-end))
-  :modes go-mode)
+  (
+   (warning line-start (file-name) ":" line ":" column ": " (message) line-end)
+   (warning line-start (file-name) ":" line ":" (message) line-end))
+  :modes go-mode
+  :next-checkers ((warning . golangci-build))
+  )
 
 ;;;###autoload
 (defun flycheck-golangci-lint-setup ()
