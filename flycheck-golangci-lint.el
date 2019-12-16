@@ -4,6 +4,7 @@
 
 ;; Author: Wei Jian Gan <weijiangan@outlook.com>
 ;; Keywords: convenience, tools, go
+;; Package-Version: 20190330.1412
 ;; URL: https://github.com/weijiangan/flycheck-golangci-lint
 ;; Version: 0.1.0
 ;; Package-Requires: ((emacs "24") (flycheck "0.22"))
@@ -72,14 +73,55 @@
   :type '(repeat (string :tag "linter"))
   :safe #'flycheck-string-list-p)
 
+
+
+(flycheck-define-checker golangci-build
+  "A Go syntax and type checker using the `go build' command.
+
+Requires Go 1.6 or newer.  See URL `https://golang.org/cmd/go'."
+  :command ("go" "build"
+            (option-flag "-i" flycheck-go-build-install-deps)
+            ;; multiple tags are listed as "dev debug ..."
+            (option-list "-tags=" flycheck-go-build-tags concat)
+            "-o" null-device)
+  :error-patterns
+  ((error line-start (file-name) ":" line ":"
+          (optional column ":") " "
+          (message (one-or-more not-newline)
+                   (zero-or-more "\n\t" (one-or-more not-newline)))
+          line-end)
+   ;; Catch error message about multiple packages in a directory, which doesn't
+   ;; follow the standard error message format.
+   (info line-start
+         (message "can't load package: package "
+                  (one-or-more (not (any ?: ?\n)))
+                  ": found packages "
+                  (one-or-more not-newline))
+         line-end))
+  :error-filter
+  (lambda (errors)
+    (dolist (error errors)
+      (unless (flycheck-error-line error)
+        ;; Flycheck ignores errors without line numbers, but the error
+        ;; message about multiple packages in a directory doesn't come with a
+        ;; line number, so inject a fake one.
+        (setf (flycheck-error-line error) 1)))
+    errors)
+  :modes go-mode
+  :predicate (lambda ()
+               (and (flycheck-buffer-saved-p)
+                    (not (string-suffix-p "_test.go" (buffer-file-name)))))
+  )
+
+
 (flycheck-define-checker golangci-lint
   "A Go syntax checker using golangci-lint that's 5x faster than gometalinter
 
 See URL `https://github.com/golangci/golangci-lint'."
-  :command ("golangci-lint" "run" "--print-issued-lines=false" "--out-format=line-number"
+  :command ("golangci-lint" "run" "--print-issued-lines=false" "--out-format=line-number" "--tests=false" "--max-issues-per-linter=10000"  "--max-same-issues=10000"
             (option "--config=" flycheck-golangci-lint-config concat)
             (option "--deadline=" flycheck-golangci-lint-deadline concat)
-            (option-flag "--tests" flycheck-golangci-lint-tests)
+            ;;(option-flag "--tests" flycheck-golangci-lint-tests)
             (option-flag "--fast" flycheck-golangci-lint-fast)
             (option-flag "--disable-all" flycheck-golangci-lint-disable-all)
             (option-flag "--enable-all" flycheck-golangci-lint-enable-all)
@@ -87,16 +129,20 @@ See URL `https://github.com/golangci/golangci-lint'."
             (option-list "--enable=" flycheck-golangci-lint-enable-linters concat)
             ".")
   :error-patterns
-  ((error line-start (file-name) ":" line ":" column ": " (message) line-end)
-   (error line-start (file-name) ":" line ":" (message) line-end))
-  :modes go-mode)
+  ((warning line-start (file-name) ":" line ":" column ": " (message) line-end)
+   (warning line-start (file-name) ":" line ":" (message) line-end))
+  :modes go-mode
+  :next-checkers ((error . golangci-build))
+  )
 
 ;;;###autoload
 (defun flycheck-golangci-lint-setup ()
   "Setup Flycheck GolangCI-Lint.
 Add `golangci-lint' to `flycheck-checkers'."
   (interactive)
-  (add-to-list 'flycheck-checkers 'golangci-lint))
+  (add-to-list 'flycheck-checkers 'golangci-build)
+  (add-to-list 'flycheck-checkers 'golangci-lint)
+  )
 
 (provide 'flycheck-golangci-lint)
 ;;; flycheck-golangci-lint.el ends here
